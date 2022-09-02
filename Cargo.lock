@@ -51,7 +51,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "taginode-cli"
+name = "taginode"
 version = "0.1.0"
 dependencies = [
  "sqlite3",

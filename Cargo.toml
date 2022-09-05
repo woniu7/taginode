@@ -7,3 +7,4 @@ edition = "2021"
 
 [dependencies]
 sqlite3 = "0.24.0"
+walkdir = "2"

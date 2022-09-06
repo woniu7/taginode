@@ -5,12 +5,6 @@ use std::fs;
 use std::os::unix::prelude::MetadataExt;
 use walkdir::WalkDir;
 use taginode::INode;
-#[cfg(target_os = "linux")]
-use std::os::linux::fs::MetadataExt;
-#[cfg(windows)]
-use std::os::windows::fs::MetadataExt;
-// #[cfg(target_os = "macos")]
-// use std::os::macos::fs::MetadataExt;
 
 fn usage() {
     eprintln!("Usage: taginode-cli tag <file> [tag1 tag2...]");
@@ -96,11 +90,9 @@ fn search() {
     let inodes = taginode::get_inodes(&connection, tag_names);
     let inode_map: HashMap<u64, HashSet<u64>> = HashMap::new();
     for inode in inodes {
-        let mut inode_set = inode_map.get(&inode.device);
-        let inode_set = match inode_set {
-            Some(inode_set) =>  inode_set,
-            None => HashSet::new(),
-        };
+        inode_map.entry(key)
+        let n = HashSet::new();
+        let inode_set = &mut *inode_map.get(&inode.device).unwrap_or(&n);
         inode_set.insert(inode.number);
     }
     for path in paths {

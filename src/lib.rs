@@ -9,21 +9,21 @@ pub struct INode {
     pub number: u64,
 }
 
-pub fn get_inodenums(connection: &Connection, device: u64, tag_names: &[&str]) -> Vec<i64> {
+pub fn get_inodes(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
     let mut h = HashSet::new();
     for tag_name in tag_names {
         h.insert(tag_name);
     }
     let tag_names: Vec<&&str> = h.into_iter().collect();
 
-    let mut inode_numbers = Vec::new();
+    let mut inodes = Vec::new();
     let sql_str = format!(
         "
-        SELECT DISTINCT b.number, b.device FROM 
+        SELECT DISTINCT b.device, b.number FROM 
         relation_tag_inode a 
         LEFT JOIN inodes b ON a.inode_id = b.id 
         LEFT JOIN tags c ON a.tag_id = c.id
-        WHERE b.device = {device} AND c.name IN ({}) 
+        WHERE c.name IN ({}) 
         GROUP BY b.id HAVING COUNT(b.id) = {}
         ", 
         vec!["?"; tag_names.len()].join(","),
@@ -41,9 +41,12 @@ pub fn get_inodenums(connection: &Connection, device: u64, tag_names: &[&str]) -
     // println!("{}, {:?}", sql_str, sql_args);
 
     while let Some(row) = cursor.next().unwrap() {
-        inode_numbers.push(row[0].as_integer().unwrap());
+        inodes.push(INode {
+            device: row[0].as_integer().unwrap() as u64,
+            number: row[1].as_integer().unwrap() as u64,
+        });
     }
-    return inode_numbers;
+    return inodes;
 }
 
 pub fn add(connection: &Connection, inodes: &[INode], tag_names: &[&str]) {

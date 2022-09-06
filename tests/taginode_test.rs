@@ -15,10 +15,14 @@ fn t() {
 		INode{ device: 16777221, number: 12951634006 },
 		INode{ device: 16777220, number: 12951634036 },
 	];
-	taginode::add(&connection, &inodes, &["ikun", "basketball", "chicken"]);
+	taginode::add(&connection, &inodes, &["basketball", "chicken"]);
     }
 
     let tag_names = vec![ "ikun", "basketball", "ikun", "chicken"];
-    let inode_numbers = taginode::get_inodenums(&connection, 16777220, &tag_names);
-    assert_eq!(inode_numbers, vec![12951634036]);
+    let inodes = taginode::get_inodes(&connection, &tag_names);
+    let expect = vec![INode { device:16777220, number: 12951634036 }];
+    for (i, e) in inodes.iter().enumerate() {
+    	assert_eq!(e.device, expect[i].device);
+    	assert_eq!(e.number, expect[i].number);
+    }
 }

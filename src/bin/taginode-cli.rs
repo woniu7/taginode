@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::os::unix::prelude::MetadataExt;
-use walkdir::WalkDir;
+// use walkdir::WalkDir;
 use taginode::INode;
 
 fn usage() {
@@ -88,12 +88,19 @@ fn search() {
     println!("tag_names: {:?}, paths: {:?}", tag_names, paths);
 
     let inodes = taginode::get_inodes(&connection, tag_names);
-    let inode_map: HashMap<u64, HashSet<u64>> = HashMap::new();
+    let mut inode_map: HashMap<u64, HashSet<u64>> = HashMap::new();
     for inode in inodes {
-        inode_map.entry(key)
-        let n = HashSet::new();
-        let inode_set = &mut *inode_map.get(&inode.device).unwrap_or(&n);
-        inode_set.insert(inode.number);
+        let inode_set = inode_map.get_mut(&inode.device);
+        match inode_set {
+            Some(inode_set) => {
+                inode_set.insert(inode.number);
+            }, 
+            None => {
+                let mut inode_set = HashSet::new();
+                inode_set.insert(inode.number);
+                inode_map.insert(inode.device, inode_set);
+            }
+        };
     }
     for path in paths {
         let metadata = fs::metadata(path);
@@ -106,26 +113,11 @@ fn search() {
         };
         let inode_set = inode_map.get(&metadata.dev());
 
+        if metadata.is_dir() {
+            // recursive
 
-        for entry in WalkDir::new(path) {
-            let entry = match entry {
-                Ok(entry) => entry,
-                Err(error) => {
-                    eprintln!("{:?}", error);
-                    continue;
-                },
-            };
-            let metadata = entry.metadata();
-            let metadata = match metadata {
-                Ok(metadata) => metadata,
-                Err(error) => {
-                    eprintln!("{:?}", error);
-                    continue;
-                },
-            };
-            
-            
-            // println!("{}", entry.path().display());
+        } else {
+
         }
     }
 }

@@ -2,8 +2,8 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::env;
 use std::fs;
+use std::io::Error;
 use std::os::unix::prelude::MetadataExt;
-// use walkdir::WalkDir;
 use taginode::INode;
 
 fn usage() {
@@ -22,24 +22,6 @@ fn main() -> std::io::Result<()>{
         "search" => search(),
         _ => usage(),
     }
-    // let connection = taginode::sql::init("taginode.db");
-    // if args[1] == "-t" {
-    //     let metadata = fs::metadata(".")?;
-    //     let tag_names: Vec<&str> = args[2..].iter().map(|val| {
-    //         val.as_str()
-    //     }).collect();
-    //     let inode_numbers = taginode::get_inodenums(&connection, metadata.st_dev(), &tag_names);
-    //     println!("{:?}", inode_numbers);
-    // } else {
-    //     let metadata = fs::metadata(args[1].to_string())?;
-    //     let tag_names: Vec<&str> = args[2..].iter().map(|val| {
-    //         val.as_str()
-    //     }).collect();
-    //     taginode::add(&connection, 
-    //         &vec![ INode{ device: metadata.st_dev(), number: metadata.st_ino() } ],
-    //         &tag_names,
-    //     );
-    // }
     Ok(())
 }
 
@@ -84,7 +66,8 @@ fn search() {
         usage();
     }
     let tag_names = &args[0..];
-    let paths = vec!["."];
+    let cur = env::current_dir().unwrap();
+    let paths = vec![cur.to_str().unwrap()];
     println!("tag_names: {:?}, paths: {:?}", tag_names, paths);
 
     let inodes = taginode::get_inodes(&connection, tag_names);
@@ -103,21 +86,36 @@ fn search() {
         };
     }
     for path in paths {
-        let metadata = fs::metadata(path);
-        let metadata = match metadata {
-            Ok(metadata) => metadata,
-            Err(error) => {
-                eprintln!("{:?}", error);
-                continue;
-            },
-        };
-        let inode_set = inode_map.get(&metadata.dev());
-
-        if metadata.is_dir() {
-            // recursive
-
-        } else {
-
+        match process_file(&inode_map, path) {
+            Err(error) => eprintln!("{error:?}"),
+            _ => (),
         }
+    }
+}
+
+fn process_file(inode_map: &HashMap<u64, HashSet<u64>>, path: &str) -> Result<(), Error> {
+    let metadata = fs::metadata(path)?;
+    match inode_map.get(&metadata.dev()) {
+        Some(inode_set) => {
+            if None != inode_set.get(&metadata.ino()) {
+                println!("{}", path);
+            }
+            if metadata.is_dir() {
+                let paths = fs::read_dir(path)?;
+                for path in paths {
+                    match path {
+                        Ok(entry) => {
+                            match process_file(&inode_map, entry.path().to_str().unwrap()) {
+                                Err(error) => eprintln!("{error:?}"),
+                                _ => (),
+                            }
+                        }
+                        Err(error) => eprintln!("{error:?}"),
+                    };
+                }
+            }
+            Ok(())
+        },
+        _ => Ok(()),
     }
 }

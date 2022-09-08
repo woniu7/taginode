@@ -30,7 +30,9 @@ fn tag() {
     let args: Vec<&str> = args[2..].iter().map(|val| {
         val.as_str()
     }).collect();
-    let connection = taginode::sql::init("taginode.db");
+    let mut db_file = env::var("HOME").unwrap();
+    db_file.push_str("/.taginode.db");
+    let connection = taginode::sql::init(&db_file);
 
     if args.len() < 2 {
         usage();
@@ -60,14 +62,16 @@ fn search() {
     let args: Vec<&str> = args[2..].iter().map(|val| {
         val.as_str()
     }).collect();
-    let connection = taginode::sql::init("taginode.db");
+    let mut db_file = env::var("HOME").unwrap();
+    db_file.push_str("/.taginode.db");
+    let connection = taginode::sql::init(&db_file);
 
     if args.len() < 1 {
         usage();
     }
     let tag_names = &args[0..];
-    let cur = env::current_dir().unwrap();
-    let paths = vec![cur.to_str().unwrap()];
+    // let cur = env::current_dir().unwrap();
+    let paths = vec!["."];
     println!("tag_names: {:?}, paths: {:?}", tag_names, paths);
 
     let inodes = taginode::get_inodes(&connection, tag_names);
@@ -93,24 +97,29 @@ fn search() {
     }
 }
 
-fn process_file(inode_map: &HashMap<u64, HashSet<u64>>, path: &str) -> Result<(), Error> {
-    let metadata = fs::metadata(path)?;
+fn process_file(inode_map: &HashMap<u64, HashSet<u64>>, f: &str) -> Result<(), Error> {
+    let metadata = fs::metadata(f)?;
     match inode_map.get(&metadata.dev()) {
         Some(inode_set) => {
             if None != inode_set.get(&metadata.ino()) {
-                println!("{}", path);
+                println!("{}", f);
             }
             if metadata.is_dir() {
-                let paths = fs::read_dir(path)?;
+                let paths = fs::read_dir(f)?;
                 for path in paths {
                     match path {
                         Ok(entry) => {
-                            match process_file(&inode_map, entry.path().to_str().unwrap()) {
-                                Err(error) => eprintln!("{error:?}"),
+                            if entry.metadata()?.is_symlink() {
+                                continue;
+                            }
+                            let p = entry.path();
+                            let p= p.to_str().unwrap();
+                            match process_file(&inode_map, p) {
+                                Err(error) => eprintln!("{p:?} {error:?}"),
                                 _ => (),
                             }
                         }
-                        Err(error) => eprintln!("{error:?}"),
+                        Err(error) => eprintln!("{f} {error:?}"),
                     };
                 }
             }

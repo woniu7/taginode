@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use sqlite3::Connection;
 use sqlite3::Value;
 
+#[derive(Debug)]
 pub struct INode {
     pub device: u64,
     pub number: u64,

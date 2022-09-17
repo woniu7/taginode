@@ -8,6 +8,7 @@ use sqlite3::Value;
 pub struct INode {
     pub device: u64,
     pub number: u64,
+    pub btime: Option<u64>,
 }
 
 pub fn get_inodes(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
@@ -30,14 +31,13 @@ pub fn get_inodes(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
         vec!["?"; tag_names.len()].join(","),
         tag_names.len(),
     );
+    let sql_args: Vec<Value> = tag_names.iter().map(|&val| {
+        Value::String(val.to_string())
+    }).collect();
     let mut cursor = connection
         .prepare(&sql_str)
         .unwrap()
         .cursor();
-    
-    let sql_args: Vec<Value> = tag_names.iter().map(|&val| {
-        Value::String(val.to_string())
-    }).collect();
     cursor.bind(&sql_args).unwrap();
     // println!("{}, {:?}", sql_str, sql_args);
 
@@ -45,6 +45,7 @@ pub fn get_inodes(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
         inodes.push(INode {
             device: row[0].as_integer().unwrap() as u64,
             number: row[1].as_integer().unwrap() as u64,
+            btime: None,
         });
     }
     return inodes;
@@ -58,35 +59,50 @@ pub fn add(connection: &Connection, inodes: &[INode], tag_names: &[&str]) {
             ", 
             vec!["?"; tag_names.len()].join("), (")
         );
-        let mut cursor = connection
-            .prepare(&sql_str)
-            .unwrap()
-            .cursor();
-        
         let mut sql_args = Vec::new();
         for tag_name in tag_names {
             sql_args.push(Value::String(tag_name.to_string()));
         }
-        cursor.bind(&sql_args).unwrap();
-        while let Some(_) = cursor.next().unwrap() {}
-    }
-    {
-        let sql_str = format!(
-            "
-            INSERT OR IGNORE INTO inodes(device,number) VALUES({}); 
-            ", 
-            vec!["?,?"; inodes.len()].join("), (")
-        );
         let mut cursor = connection
             .prepare(&sql_str)
             .unwrap()
             .cursor();
-        
+        cursor.bind(&sql_args).unwrap();
+        while let Some(_) = cursor.next().unwrap() {}
+    }
+    {
+        let mut sqls = vec![""; 0];
         let mut sql_args = Vec::new();
         for inode in inodes {
-            sql_args.push(Value::Integer(inode.device as i64));
-            sql_args.push(Value::Integer(inode.number as i64));
+            match inode.btime {
+                None => {
+                    sqls.push("
+                    INSERT OR IGNORE INTO inodes(device,number) VALUES(?,?);
+                    "); 
+                    sql_args.push(Value::Integer(inode.device as i64));
+                    sql_args.push(Value::Integer(inode.number as i64));
+                },
+                Some(btime) => {
+                    sqls.push("
+                    INSERT OR IGNORE INTO inodes(device,number,btime) 
+                    VALUES(?,?,strftime('%Y-%m-%d %H:%M:%S', ?, 'unixepoch'));
+                    UPDATE inodes SET btime = strftime('%Y-%m-%d %H:%M:%S', ?, 'unixepoch') 
+                    WHERE  0 = (SELECT CHANGES()) AND device = ? AND number = ?;
+                    "); 
+                    sql_args.push(Value::Integer(inode.device as i64));
+                    sql_args.push(Value::Integer(inode.number as i64));
+                    sql_args.push(Value::Integer(btime as i64));
+                    sql_args.push(Value::Integer(btime as i64));
+                    sql_args.push(Value::Integer(inode.device as i64));
+                    sql_args.push(Value::Integer(inode.number as i64));
+                }
+            }
         }
+        let sql_str = sqls.join("");
+        let mut cursor = connection
+            .prepare(&sql_str)
+            .unwrap()
+            .cursor();
         cursor.bind(&sql_args).unwrap();
         while let Some(_) = cursor.next().unwrap() {}
     }
@@ -98,15 +114,14 @@ pub fn add(connection: &Connection, inodes: &[INode], tag_names: &[&str]) {
             ", 
             vec!["?"; tag_names.len()].join(",")
         );
-        let mut cursor = connection
-            .prepare(&sql_str)
-            .unwrap()
-            .cursor();
-        
         let mut sql_args = Vec::new();
         for tag_name in tag_names {
             sql_args.push(Value::String(tag_name.to_string()));
         }
+        let mut cursor = connection
+            .prepare(&sql_str)
+            .unwrap()
+            .cursor();
         cursor.bind(&sql_args).unwrap();
         while let Some(row) = cursor.next().unwrap() {
             tag_ids.push(row[0].as_integer().unwrap());
@@ -120,16 +135,15 @@ pub fn add(connection: &Connection, inodes: &[INode], tag_names: &[&str]) {
             ", 
             vec!["?,?"; inodes.len()].join("), (")
         );
-        let mut cursor = connection
-            .prepare(&sql_str)
-            .unwrap()
-            .cursor();
-        
         let mut sql_args = Vec::new();
         for inode in inodes {
             sql_args.push(Value::Integer(inode.device as i64));
             sql_args.push(Value::Integer(inode.number as i64));
         }
+        let mut cursor = connection
+            .prepare(&sql_str)
+            .unwrap()
+            .cursor();
         cursor.bind(&sql_args).unwrap();
 
         while let Some(row) = cursor.next().unwrap() {
@@ -144,11 +158,6 @@ pub fn add(connection: &Connection, inodes: &[INode], tag_names: &[&str]) {
             ", 
             vec!["?,?"; tag_ids.len()*inode_ids.len()].join("), (")
         );
-        let mut cursor = connection
-            .prepare(&sql_str)
-            .unwrap()
-            .cursor();
-        
         let mut sql_args = Vec::new();
         for inode_id in inode_ids {
             for tag_id in &tag_ids {
@@ -156,6 +165,10 @@ pub fn add(connection: &Connection, inodes: &[INode], tag_names: &[&str]) {
                 sql_args.push(Value::Integer(inode_id));
             }
         }
+        let mut cursor = connection
+            .prepare(&sql_str)
+            .unwrap()
+            .cursor();
         cursor.bind(&sql_args).unwrap();
         while let Some(_) = cursor.next().unwrap() {}
     }

@@ -26,8 +26,9 @@ pub fn init(db_file: &str) ->  Connection {
                 `id` INTEGER PRIMARY KEY, 
                 `device` INTEGER NOT NULL,
                 `number` INTEGER NOT NULL, 
+                `btime` TIMESTAMP DEFAULT NULL,
                 `tag_num` INTEGER NOT NULL DEFAULT 0, 
-                `create_time` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `create_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(device, number),
                 CHECK(device <> 0 AND number <> 0)
             );
@@ -42,9 +43,40 @@ pub fn init(db_file: &str) ->  Connection {
                 `id` INTEGER PRIMARY KEY, 
                 `tag_id` INTEGER NOT NULL,
                 `inode_id` INTEGER NOT NULL, 
-                `create_time` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                `create_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 UNIQUE(tag_id, inode_id), 
                 CHECK(tag_id <> 0 AND inode_id <> 0)
+            );
+            ",
+            //INSERT INTO relation_tag_inode (tag_id, inode_id) VALUES (123432, 89234);
+        )
+        .unwrap();
+
+
+    connection
+        .execute(
+            "
+            CREATE TABLE IF NOT EXISTS file (
+                `id` INTEGER PRIMARY KEY, 
+                `md5` TEXT NOT NULL UNIQUE,
+                `sha256` TEXT NOT NULL UNIQUE,
+                `path` TEXT,
+                `create_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+            ",
+            //INSERT INTO relation_tag_inode (tag_id, inode_id) VALUES (123432, 89234);
+        )
+        .unwrap();
+    connection
+        .execute(
+            "
+            CREATE TABLE IF NOT EXISTS relation_tag_file (
+                `id` INTEGER PRIMARY KEY, 
+                `tag_id` INTEGER NOT NULL,
+                `file_id` INTEGER NOT NULL, 
+                `create_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(tag_id, file_id), 
+                CHECK(tag_id <> 0 AND file_id <> 0)
             );
             ",
             //INSERT INTO relation_tag_inode (tag_id, inode_id) VALUES (123432, 89234);

@@ -4,6 +4,7 @@ use std::env;
 use std::fs;
 use std::io::Error;
 use std::os::unix::prelude::MetadataExt;
+use std::time::UNIX_EPOCH;
 use taginode::INode;
 
 fn usage() {
@@ -37,7 +38,7 @@ fn tag() {
     }
     let files = &args[0..1];
     let tag_names = &args[1..];
-    println!("tag_names: {:?}, files: {:?}", tag_names, files);
+    eprintln!("tag_names: {:?}, files: {:?}", tag_names, files);
 
     let mut db_file = env::var("HOME").unwrap();
     db_file.push_str("/.taginode.db");
@@ -50,6 +51,22 @@ fn tag() {
                 eprintln!("{:?}", error);
                 continue;
             },
+        };
+        let btime = metadata.created();
+        let btime = match btime {
+            Ok(btime) => { 
+                match btime.duration_since(UNIX_EPOCH) {
+                    Ok(btime) => Some(btime.as_secs()),
+                    Err(error) => {
+                        eprintln!("Warning: {:?}", error);
+                        None
+                    }
+                }
+            },
+            Err(error) => {
+                eprintln!("Warning: {:?}", error);
+                None
+            }
         };
         taginode::add(&connection, 
             &vec![ INode{ device: metadata.dev(), number: metadata.ino() } ],
@@ -68,7 +85,7 @@ fn search() {
     }
     let tag_names = &args[0..];
     let paths = vec!["."];
-    println!("tag_names: {:?}, paths: {:?}", tag_names, paths);
+    eprintln!("tag_names: {:?}, paths: {:?}", tag_names, paths);
 
     let mut db_file = env::var("HOME").unwrap();
     db_file.push_str("/.taginode.db");

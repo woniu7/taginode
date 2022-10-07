@@ -21,8 +21,8 @@ pub fn get_inodes(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
     let mut inodes = Vec::new();
     let sql_str = format!(
         "
-        SELECT DISTINCT b.device, b.number FROM 
-        relation_tag_inode a 
+        SELECT DISTINCT b.device, b.number, strftime('%s', b.btime) as btime
+        FROM relation_tag_inode a 
         LEFT JOIN inodes b ON a.inode_id = b.id 
         LEFT JOIN tags c ON a.tag_id = c.id
         WHERE c.name IN ({}) 
@@ -42,10 +42,14 @@ pub fn get_inodes(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
     // println!("{}, {:?}", sql_str, sql_args);
 
     while let Some(row) = cursor.next().unwrap() {
+        let btime = match row[2].as_integer() {
+            Some(v) => Some(v as u64),
+            None => None,
+        };
         inodes.push(INode {
             device: row[0].as_integer().unwrap() as u64,
             number: row[1].as_integer().unwrap() as u64,
-            btime: None,
+            btime,
         });
     }
     return inodes;

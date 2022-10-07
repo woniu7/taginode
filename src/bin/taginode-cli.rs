@@ -1,8 +1,7 @@
 use std::collections::HashMap;
-use std::collections::HashSet;
 use std::env;
 use std::fs;
-use std::io::Error;
+use std::io::{Error, ErrorKind};
 use std::os::unix::prelude::MetadataExt;
 use std::time::UNIX_EPOCH;
 use taginode::INode;
@@ -69,7 +68,7 @@ fn tag() {
             }
         };
         taginode::add(&connection, 
-            &vec![ INode{ device: metadata.dev(), number: metadata.ino() } ],
+            &vec![ INode{ device: metadata.dev(), number: metadata.ino(), btime } ],
             &tag_names,
         );
     }
@@ -91,58 +90,73 @@ fn search() {
     db_file.push_str("/.taginode.db");
     let connection = taginode::sql::init(&db_file);
     let inodes = taginode::get_inodes(&connection, tag_names);
-    let mut inode_map: HashMap<u64, HashSet<u64>> = HashMap::new();
-    for inode in inodes {
-        let inode_set = inode_map.get_mut(&inode.device);
-        match inode_set {
-            Some(inode_set) => {
-                inode_set.insert(inode.number);
+    let mut dev_inode_map: HashMap<u64, HashMap<u64, &INode>> = HashMap::new();
+    for inode in &inodes {
+        let inode_map = dev_inode_map.get_mut(&inode.device);
+        match inode_map {
+            Some(inode_map) => {
+                inode_map.insert(inode.number, inode);
             }, 
             None => {
-                let mut inode_set = HashSet::new();
-                inode_set.insert(inode.number);
-                inode_map.insert(inode.device, inode_set);
+                let mut inode_map = HashMap::new();
+                inode_map.insert(inode.number, inode);
+                dev_inode_map.insert(inode.device, inode_map);
             }
         };
     }
     for path in paths {
-        match process_file(&inode_map, path) {
+        match process_file(&dev_inode_map, path) {
             Err(error) => eprintln!("{error:?}"),
             _ => (),
         }
     }
 }
 
-fn process_file(inode_map: &HashMap<u64, HashSet<u64>>, f: &str) -> Result<(), Error> {
+fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str) -> Result<(), Error> {
     let metadata = fs::metadata(f)?;
-    match inode_map.get(&metadata.dev()) {
-        Some(inode_set) => {
-            if None != inode_set.get(&metadata.ino()) {
-                println!("{}", f);
-            }
-            if metadata.is_dir() {
-                let paths = fs::read_dir(f)?;
-                for path in paths {
-                    match path {
-                        Ok(entry) => {
-                            if entry.metadata()?.is_symlink() {
-                                continue;
-                            }
-                            let p = entry.path();
-                            let p= p.to_str().unwrap();
-                            match process_file(&inode_map, p) {
-                                Err(error) => eprintln!("{p:?} {error:?}"),
-                                _ => (),
-                            }
-                        }
-                        Err(error) => eprintln!("{f} {error:?}"),
-                    };
+    if dev_inode_map.get(&metadata.dev()).is_some() {
+        let inode_map = dev_inode_map.get(&metadata.dev()).unwrap();
+        let mut hit = false;
+        match inode_map.get(&metadata.ino()) {
+            None => (),
+            Some(ino) => {
+                let created = (|| -> Result<u64, Error> {
+                    match metadata.created()?.duration_since(UNIX_EPOCH) {
+                        Ok(btime) => 
+                        Ok(btime.as_secs()),
+                        Err(error) => 
+                        Err(Error::new(ErrorKind::Other, error.to_string())),
+                    }
+                })();
+                if ino.btime == None || created.is_err() || ino.btime.unwrap() == created.unwrap() {
+                    hit = true;
                 }
             }
-            Ok(())
-        },
-        _ => Ok(()),
+        };
+        if hit {
+            println!("{} ", f);
+        }
+        if metadata.is_dir() {
+            let paths = fs::read_dir(f)?;
+            for path in paths {
+                match path {
+                    Ok(entry) => {
+                        if entry.metadata()?.is_symlink() {
+                            continue;
+                        }
+                        let p = entry.path();
+                        let p= p.to_str().unwrap();
+                        match process_file(&dev_inode_map, p) {
+                            Err(error) => eprintln!("{p:?} {error:?}"),
+                            _ => (),
+                        }
+                    }
+                    Err(error) => eprintln!("{f} {error:?}"),
+                };
+            }
+        }
     }
+    Ok(())
 }
 
 fn list() {

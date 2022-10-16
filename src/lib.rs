@@ -21,7 +21,7 @@ pub fn get_inodes(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
     let mut inodes = Vec::new();
     let sql_str = format!(
         "
-        SELECT DISTINCT b.device, b.number, strftime('%s', b.btime) as btime
+        SELECT DISTINCT b.device, b.number, CAST(strftime('%s', b.btime) AS INT) as btime
         FROM relation_tag_inode a 
         LEFT JOIN inodes b ON a.inode_id = b.id 
         LEFT JOIN tags c ON a.tag_id = c.id
@@ -39,7 +39,6 @@ pub fn get_inodes(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
         .unwrap()
         .cursor();
     cursor.bind(&sql_args).unwrap();
-    // println!("{}, {:?}", sql_str, sql_args);
 
     while let Some(row) = cursor.next().unwrap() {
         let btime = match row[2].as_integer() {
@@ -76,41 +75,35 @@ pub fn add(connection: &Connection, inodes: &[INode], tag_names: &[&str]) {
         while let Some(_) = cursor.next().unwrap() {}
     }
     {
-        // let mut sqls = vec![""; 0];
-        // let mut sql_args = Vec::new();
+        let mut sqls: Vec<String> = Vec::new();
         for inode in inodes {
-            let sql_str: &str;
-            let mut sql_args = Vec::new();
             match inode.btime {
                 None => {
-                    sql_str = "
-                    INSERT OR IGNORE INTO inodes(device,number) VALUES(?,?);
-                    "; 
-                    sql_args.push(Value::Integer(inode.device as i64));
-                    sql_args.push(Value::Integer(inode.number as i64));
+                    sqls.push(format!("
+                        INSERT OR IGNORE INTO inodes(device,number) VALUES({},{});
+                        ",
+                        inode.device, inode.number,
+                    ));
                 },
                 Some(btime) => {
-                    sql_str = "
+                    sqls.push(format!("
                     INSERT OR IGNORE INTO inodes(device,number,btime) 
-                    VALUES(?,?,strftime('%Y-%m-%d %H:%M:%S', ?, 'unixepoch'));
-                    UPDATE inodes SET btime = strftime('%Y-%m-%d %H:%M:%S', ?, 'unixepoch') 
-                    WHERE  0 = (SELECT CHANGES()) AND device = ? AND number = ?;
-                    "; 
-                    sql_args.push(Value::Integer(inode.device as i64));
-                    sql_args.push(Value::Integer(inode.number as i64));
-                    sql_args.push(Value::Integer(btime as i64));
-                    sql_args.push(Value::Integer(btime as i64));
-                    sql_args.push(Value::Integer(inode.device as i64));
-                    sql_args.push(Value::Integer(inode.number as i64));
+                    VALUES({},{},strftime('%Y-%m-%d %H:%M:%S', {}, 'unixepoch'));
+                    UPDATE inodes SET btime = strftime('%Y-%m-%d %H:%M:%S', {}, 'unixepoch') 
+                    WHERE  0 = (SELECT CHANGES()) AND device = {} AND number = {};
+                    ", 
+                    inode.device,
+                    inode.number,
+                    btime,
+                    btime,
+                    inode.device,
+                    inode.number,
+                    ));
                 }
             }
-            let mut cursor = connection
-                .prepare(&sql_str)
-                .unwrap()
-                .cursor();
-            cursor.bind(&sql_args).unwrap();
-            while let Some(_) = cursor.next().unwrap() {}
         }
+        let sql_str = sqls.join("");
+        connection.execute(sql_str).unwrap();
     }
     let mut tag_ids = vec![0;0];
     {
@@ -171,7 +164,6 @@ pub fn add(connection: &Connection, inodes: &[INode], tag_names: &[&str]) {
                 sql_args.push(Value::Integer(inode_id));
             }
         }
-        println!("{}", sql_str);
         let mut cursor = connection
             .prepare(&sql_str)
             .unwrap()

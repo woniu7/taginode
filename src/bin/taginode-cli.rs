@@ -13,8 +13,7 @@ fn usage() {
     eprintln!("Usage: taginode-cli [option] list tags");
     eprintln!(
 "Option: 
-        -f <db>
-                Specify db path to store data, default ~/.taginode.db
+        -f <db>    Specify db path to store data, default ~/.taginode.db
 "   );
     std::process::exit(1);
 }
@@ -185,7 +184,7 @@ fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str) -> 
 }
 
 fn list(args: &[&str], db: Connection) {
-    if args.len() < 1 && args[0] != "tags" {
+    if args.len() < 1 || args[0] != "tags" {
         usage();
     }
 

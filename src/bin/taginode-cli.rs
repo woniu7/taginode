@@ -3,6 +3,7 @@ use std::env;
 use std::fs;
 use std::io::{Error, ErrorKind};
 use std::os::unix::prelude::MetadataExt;
+use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use sqlite3::Connection;
 use taginode::INode;
@@ -11,8 +12,9 @@ fn usage() {
     eprintln!("Usage: taginode-cli [option] tag <file> <tag> [tag1,tag2...]");
     eprintln!("Usage: taginode-cli [option] search [tag1,tag2...]");
     eprintln!("Usage: taginode-cli [option] list tags");
+    eprintln!("Usage: taginode-cli [option] cat <file> [file]...");
     eprintln!(
-"Option: 
+"Options: 
         -f <db>    Specify db path to store data, default ~/.taginode.db
 "   );
     std::process::exit(1);
@@ -60,6 +62,7 @@ fn main() -> Result<(), Error>{
         "tag" => tag(&operands[1..], db),
         "search" => search(&operands[1..], db),
         "list" => list(&operands[1..], db),
+        "cat" => show(&operands[1..], db),
         _ => usage(),
     }
     Ok(())
@@ -190,4 +193,51 @@ fn list(args: &[&str], db: Connection) {
 
     let tag_names = taginode::list_tags(&db);
     println!("{tag_names:?}")
+}
+
+fn show(args: &[&str], db: Connection) {
+    if args.len() < 1 {
+        usage();
+    }
+    for path in args {
+        let metadata = fs::metadata(path);
+        print!("{}:    ", path);
+        match metadata {
+            Ok(metadata) => {
+                let tag_names = taginode::get_tags(
+                    &db, 
+                    INode { 
+                        device: metadata.dev(), 
+                        number: metadata.ino(), 
+                        btime: get_file_btime(metadata.created()),
+                    },
+                );
+                println!("{tag_names:?}")
+            },
+            Err(err) => eprintln!("{}", err),
+        }
+    }
+}
+
+fn get_file_btime(btime: std::io::Result<SystemTime>) -> Option<u64> {
+// match btime {
+//     Ok(btime) => { 
+//         match btime.duration_since(UNIX_EPOCH) {
+//             Ok(btime) => Some(btime.as_secs()),
+//             Err(error) => {
+//                 // eprintln!("Warning: {:?}", error);
+//                 None
+//             }
+//         }
+//     },
+//     Err(error) => {
+//         // eprintln!("Warning: {:?}", error);
+//         None
+//     }
+// }
+    if btime.is_ok() && btime.as_ref().unwrap().duration_since(UNIX_EPOCH).is_ok() {
+        Some(btime.unwrap().duration_since(UNIX_EPOCH).unwrap().as_secs())
+    } else {
+        None
+    }
 }

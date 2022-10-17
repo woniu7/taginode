@@ -11,6 +11,22 @@ pub struct INode {
     pub btime: Option<u64>,
 }
 
+pub struct File {
+    pub md5: String,
+    pub sha256: String,
+    pub path: String,
+}
+
+// pub struct Tag {
+//     pub Name: String,
+// }
+
+// pub struct FileTags {
+//     inode: INode,
+//     file: File,
+//     tags: Vec<Tag>,
+// }
+
 pub fn get_inodes(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
     let mut h = HashSet::new();
     for tag_name in tag_names {
@@ -180,6 +196,41 @@ pub fn list_tags(connection: &Connection) -> Vec<String> {
         .unwrap()
         .cursor();
 
+    let mut tag_names = Vec::new();
+    while let Some(row) = cursor.next().unwrap() {
+        tag_names.push(row[0].as_string().unwrap().to_owned());
+    }
+    return tag_names;
+}
+
+pub fn get_tags(connection: &Connection, inode: INode) -> Vec<String> {
+    let sql_str = "SELECT id FROM `inodes` 
+    WHERE device = ? AND number = ? AND 
+    (CAST(strftime('%s', btime) AS INT) = ? OR btime IS NULL)";
+    let mut cursor = connection.prepare(&sql_str).unwrap().cursor();
+    let mut sql_args = vec![
+         Value::Integer(inode.device as i64),  
+         Value::Integer(inode.number as i64),
+    ];
+    match inode.btime {
+        Some(btime) => sql_args.push(Value::Integer(btime as i64)),
+                    None => sql_args.push(Value::Null),
+    }
+    cursor.bind(&sql_args).unwrap();
+    let mut inode_id = 0;
+    while let Some(row) = cursor.next().unwrap() {
+        inode_id = row[0].as_integer().unwrap();
+    }
+
+    let sql_str = 
+    "SELECT DISTINCT b.name FROM relation_tag_inode a 
+    LEFT JOIN tags b ON b.id = a.tag_id
+    WHERE a.inode_id = ?";
+    let mut cursor = connection
+        .prepare(&sql_str)
+        .unwrap()
+        .cursor();
+    cursor.bind(&[Value::Integer(inode_id)]).unwrap();
     let mut tag_names = Vec::new();
     while let Some(row) = cursor.next().unwrap() {
         tag_names.push(row[0].as_string().unwrap().to_owned());

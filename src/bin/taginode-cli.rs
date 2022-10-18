@@ -9,8 +9,8 @@ use sqlite3::Connection;
 use taginode::INode;
 
 fn usage() {
-    eprintln!("Usage: taginode-cli [option] tag <file> <tag> [tag1,tag2...]");
-    eprintln!("Usage: taginode-cli [option] search [tag1,tag2...]");
+    eprintln!("Usage: taginode-cli [option] tag <file> <tag> \"tag1[,tag2,tag3...]\"");
+    eprintln!("Usage: taginode-cli [option] search [-d directory] \"tag1[,tag2,tag3...]\"");
     eprintln!("Usage: taginode-cli [option] list tags");
     eprintln!("Usage: taginode-cli [option] cat <file> [file]...");
     eprintln!(
@@ -24,30 +24,71 @@ fn main() -> Result<(), Error>{
     let args: Vec<String> = env::args().collect();
     let args = &args[1..];
 
+    enum OptArg { None, Mandatory }
+    let opt_check = HashMap::from([
+        (b'f', OptArg::Mandatory),
+        (b'd', OptArg::Mandatory),
+        (b'-', OptArg::None),
+    ]);
+
     let mut options: HashMap<u8, &str> = HashMap::new();
     let mut operands: Vec<&str> = Vec::new();
     let mut i = 0;
     while i < args.len() {
         let arg = args[i].as_str();
-        match arg {
-            "-f" => {
-                if i+1 >= args.len() {
-                    eprint!("Option -f need option-argument");
-                    usage();
-                }
-                options.insert(b'f', args[i+1].as_str());
-                i += 1;
-            },
-            "--" => {
-                for e in &args[(i+1)..] {
-                    operands.push(e);
-                }
-                break;
+        if arg == "--" {
+            for e in &args[(i+1)..] {
+                operands.push(e);
             }
-            other => operands.push(other),
+            break
+        }
+        let arg_b = args[i].as_bytes();
+        if arg_b.len() ==2 && arg_b[0] == b'-' && opt_check.get(&arg_b[1]).is_some() {
+            let c = arg_b[1];
+            match &opt_check[&arg_b[1]] {
+                OptArg::None => {
+                    options.insert(c, "");
+                },
+                OptArg::Mandatory => {
+                    if i+1 >= args.len() {
+                        eprintln!("Option -{} need option-argument", c as char);
+                        usage();
+                    }
+                    options.insert(c, args[i+1].as_str());
+                    i += 1;
+                },
+            }
+        } else {
+            operands.push(arg) ;  
         }
         i += 1;
-    } 
+    }
+    //     match arg {
+    //         "-f" => {
+    //             if i+1 >= args.len() {
+    //                 eprint!("Option -f need option-argument");
+    //                 usage();
+    //             }
+    //             options.insert(b'f', Some(args[i+1].as_str()));
+    //             i += 1;
+    //         },
+    //         "-d" => {
+    //             if i+1 >= args.len() {
+    //                 eprint!("Option -d need option-argument");
+    //                 usage();
+    //             }
+    //             options.insert(b'd', Some(args[i+1].as_str()));
+    //             // i += 1;
+    //         },
+    //         "--" => {
+    //             for e in &args[(i+1)..] {
+    //                 operands.push(e);
+    //             }
+    //             break;
+    //         }
+    //         other => operands.push(other),
+    //     }
+    //     i += 1;
     if operands.is_empty() {
         usage();
     }
@@ -55,12 +96,13 @@ fn main() -> Result<(), Error>{
     let mut h = env::var("HOME").unwrap();
     h.push_str("/.taginode.db");
     let default_db_path = h.as_str();
-    let db_path = options.get(&b'f').unwrap_or(&default_db_path);
+
+    let db_path = options.get(&b'f').copied().unwrap_or(&default_db_path);
     let db = taginode::sql::init(&db_path);
 
     match operands[0] {
         "tag" => tag(&operands[1..], db),
-        "search" => search(&operands[1..], db),
+        "search" => search(&operands[1..], options, db),
         "list" => list(&operands[1..], db),
         "cat" => show(&operands[1..], db),
         _ => usage(),
@@ -68,12 +110,12 @@ fn main() -> Result<(), Error>{
     Ok(())
 }
 
-fn tag(args: &[&str], db: Connection) {
-    if args.len() < 2 {
+fn tag(operands: &[&str], db: Connection) {
+    if operands.len() < 2 {
         usage();
     }
-    let files = &args[0..1];
-    let tag_names: Vec<&str> = args[1].split(",").collect();
+    let files = &operands[0..1];
+    let tag_names: Vec<&str> = operands[1].split(",").collect();
     eprintln!("tag_names: {:?}, files: {:?}", tag_names, files);
 
     for file in files {
@@ -108,12 +150,12 @@ fn tag(args: &[&str], db: Connection) {
     }
 }
 
-fn search(args: &[&str], db: Connection) {
-    if args.len() != 1 {
+fn search(operands: &[&str], options: HashMap<u8, &str>, db: Connection) {
+    if operands.len() != 1 {
         usage();
     }
-    let tag_names: Vec<&str> = args[0].split(",").collect();
-    let paths = vec!["."];
+    let tag_names: Vec<&str> = operands[0].split(",").collect();
+    let paths = vec![options.get(&b'd').copied().unwrap_or(".")];
     eprintln!("tag_names: {:?}, paths: {:?}", tag_names, paths);
 
     let inodes = taginode::get_inodes(&db, &tag_names);

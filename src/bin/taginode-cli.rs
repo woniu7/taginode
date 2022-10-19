@@ -63,32 +63,6 @@ fn main() -> Result<(), Error>{
         }
         i += 1;
     }
-    //     match arg {
-    //         "-f" => {
-    //             if i+1 >= args.len() {
-    //                 eprint!("Option -f need option-argument");
-    //                 usage();
-    //             }
-    //             options.insert(b'f', Some(args[i+1].as_str()));
-    //             i += 1;
-    //         },
-    //         "-d" => {
-    //             if i+1 >= args.len() {
-    //                 eprint!("Option -d need option-argument");
-    //                 usage();
-    //             }
-    //             options.insert(b'd', Some(args[i+1].as_str()));
-    //             // i += 1;
-    //         },
-    //         "--" => {
-    //             for e in &args[(i+1)..] {
-    //                 operands.push(e);
-    //             }
-    //             break;
-    //         }
-    //         other => operands.push(other),
-    //     }
-    //     i += 1;
     if operands.is_empty() {
         usage();
     }
@@ -104,7 +78,7 @@ fn main() -> Result<(), Error>{
         "tag" => tag(&operands[1..], db),
         "search" => search(&operands[1..], options, db),
         "list" => list(&operands[1..], db),
-        "cat" => show(&operands[1..], db),
+        "cat" => cat(&operands[1..], db),
         _ => usage(),
     }
     Ok(())
@@ -237,7 +211,7 @@ fn list(args: &[&str], db: Connection) {
     println!("{tag_names:?}")
 }
 
-fn show(args: &[&str], db: Connection) {
+fn cat(args: &[&str], db: Connection) {
     if args.len() < 1 {
         usage();
     }

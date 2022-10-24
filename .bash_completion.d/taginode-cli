@@ -1,0 +1,36 @@
+_taginode-cli() 
+{
+	local cur prev opts
+	COMPREPLY=()
+	cur="${COMP_WORDS[COMP_CWORD]}"
+	prev="${COMP_WORDS[COMP_CWORD-1]}"
+	opts="tag search list cat"
+
+	case "${prev}" in
+		-f|-d|cat|tag)
+			COMPREPLY=( $(compgen -f ${cur}) )
+			return 0
+			;;
+		list)
+			COMPREPLY=( $(compgen -W "tags" -- ${cur}) )
+			return 0
+			;;
+		search)
+			if [[ "$cur" == *,* ]]; then
+				local realcur prefix
+				realcur=${cur##*,}
+				prefix=${cur%,*}
+				COMPREPLY=( $(compgen -W "$(taginode-cli list tags)" -P "${prefix}," -- ${realcur}) )
+			else
+				COMPREPLY=( $(compgen -W "$(taginode-cli list tags)" -- ${cur}) )
+			fi
+			return 0
+			;;
+		*)
+			;;
+	esac
+
+	COMPREPLY=( $(compgen -W "${opts}" -- ${cur}) )
+}
+complete -o nospace -F _taginode-cli taginode-cli
+#complete -F _taginode-cli taginode-cli

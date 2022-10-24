@@ -208,7 +208,9 @@ fn list(args: &[&str], db: Connection) {
     }
 
     let tag_names = taginode::list_tags(&db);
-    println!("{tag_names:?}")
+    for tag_name in tag_names {
+        println!("{tag_name:?}")
+    }
 }
 
 fn cat(args: &[&str], db: Connection) {

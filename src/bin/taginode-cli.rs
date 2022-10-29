@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
@@ -7,86 +8,63 @@ use std::time::SystemTime;
 use std::time::UNIX_EPOCH;
 use sqlite3::Connection;
 use taginode::INode;
+use taginode::opt::OptArg;
+use taginode::opt::OptCheck;
 
-fn usage() {
-    eprintln!("Usage: taginode-cli [option] tag <file> <tag> \"tag1[,tag2,tag3...]\"");
-    eprintln!("Usage: taginode-cli [option] search [-d directory] \"tag1[,tag2,tag3...]\"");
-    eprintln!("Usage: taginode-cli [option] list tags");
-    eprintln!("Usage: taginode-cli [option] cat <file> [file]...");
-    eprintln!(
-"Options: 
-        -f <db>    Specify db path to store data, default ~/.taginode.db
-"   );
-    std::process::exit(1);
+fn usage(opt_check: &OptCheck) -> impl Fn() {
+    let usage_opt = taginode::opt::usage(opt_check);
+    move || {
+        eprintln!("Usage: taginode-cli [option] tag <file> <tag> \"tag1[,tag2,tag3...]\"");
+        eprintln!("Usage: taginode-cli [option] search [-d directory] \"tag1[,tag2,tag3...]\"");
+        eprintln!("Usage: taginode-cli [option] list tags");
+        eprintln!("Usage: taginode-cli [option] cat <file> [file]...");
+        eprintln!("{usage_opt}");
+        std::process::exit(1);
+    }
 }
 
 fn main() -> Result<(), Error>{
-    let args: Vec<String> = env::args().collect();
-    let args = &args[1..];
+    let mut default_db = env::var("HOME").unwrap();
+    default_db.push_str("/.taginode.db");
 
-    enum OptArg { None, Mandatory }
-    let opt_check = HashMap::from([
-        (b'f', OptArg::Mandatory),
-        (b'd', OptArg::Mandatory),
-        (b'-', OptArg::None),
+    let opt_check = BTreeMap::from([
+        (b'f', (OptArg::Mandatory(default_db.as_str()), "-f <db>        specify db path to store data, default ~/.taginode.db"  )),
+        (b'd', (                OptArg::Mandatory("."), "-d <directory> specify path to search file by tags, default \".\""     )),
+        (b'v', (                          OptArg::None, "-v             verbose"                                                )),
     ]);
+    let usage = usage(&opt_check);
 
-    let mut options: HashMap<u8, &str> = HashMap::new();
-    let mut operands: Vec<&str> = Vec::new();
-    let mut i = 0;
-    while i < args.len() {
-        let arg = args[i].as_str();
-        if arg == "--" {
-            for e in &args[(i+1)..] {
-                operands.push(e);
-            }
-            break
-        }
-        let arg_b = args[i].as_bytes();
-        if arg_b.len() ==2 && arg_b[0] == b'-' && opt_check.get(&arg_b[1]).is_some() {
-            let c = arg_b[1];
-            match &opt_check[&arg_b[1]] {
-                OptArg::None => {
-                    options.insert(c, "");
-                },
-                OptArg::Mandatory => {
-                    if i+1 >= args.len() {
-                        eprintln!("Option -{} need option-argument", c as char);
-                        usage();
-                    }
-                    options.insert(c, args[i+1].as_str());
-                    i += 1;
-                },
-            }
-        } else {
-            operands.push(arg) ;  
-        }
-        i += 1;
-    }
+    let args: Vec<String> = env::args().collect();
+    let (options, operands) = 
+        taginode::opt::get_opt_per(&args[1..], &opt_check).unwrap_or_else(|err| {
+            eprintln!("{}: {}",args[0], err);
+            usage();
+            std::process::exit(1);
+        });
     if operands.is_empty() {
         usage();
     }
 
-    let mut h = env::var("HOME").unwrap();
-    h.push_str("/.taginode.db");
-    let default_db_path = h.as_str();
-
-    let db_path = options.get(&b'f').copied().unwrap_or(&default_db_path);
+    let db_path = options.get(&b'f').copied().unwrap_or(default_db.as_str());
     let db = taginode::sql::init(&db_path);
 
-    match operands[0] {
+    let ret = match operands[0] {
         "tag" => tag(&operands[1..], db),
         "search" => search(&operands[1..], options, db),
         "list" => list(&operands[1..], db),
         "cat" => cat(&operands[1..], db),
-        _ => usage(),
+        _ => Err(Error::new(ErrorKind::Other, "")),
+    };
+    if ret.is_err() {
+        eprintln!("{}", ret.as_ref().unwrap_err());
+        usage();
     }
-    Ok(())
+    ret
 }
 
-fn tag(operands: &[&str], db: Connection) {
+fn tag(operands: &[&str], db: Connection) -> Result<(), Error> {
     if operands.len() < 2 {
-        usage();
+        return err_str("");
     }
     let files = &operands[0..1];
     let tag_names: Vec<&str> = operands[1].split(",").collect();
@@ -122,14 +100,15 @@ fn tag(operands: &[&str], db: Connection) {
             &tag_names,
         );
     }
+    Ok(())
 }
 
-fn search(operands: &[&str], options: HashMap<u8, &str>, db: Connection) {
+fn search(operands: &[&str], options: HashMap<u8, &str>, db: Connection) -> Result<(), Error> {
     if operands.len() != 1 {
-        usage();
+        return err_str("");
     }
     let tag_names: Vec<&str> = operands[0].split(",").collect();
-    let paths = vec![options.get(&b'd').copied().unwrap_or(".")];
+    let paths = vec![options.get(&b'd').copied().unwrap_or("")];
     eprintln!("tag_names: {:?}, paths: {:?}", tag_names, paths);
 
     let inodes = taginode::get_inodes(&db, &tag_names);
@@ -153,6 +132,7 @@ fn search(operands: &[&str], options: HashMap<u8, &str>, db: Connection) {
             _ => (),
         }
     }
+    Ok(())
 }
 
 fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str) -> Result<(), Error> {
@@ -202,20 +182,21 @@ fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str) -> 
     Ok(())
 }
 
-fn list(args: &[&str], db: Connection) {
+fn list(args: &[&str], db: Connection) -> Result<(), Error> {
     if args.len() < 1 || args[0] != "tags" {
-        usage();
+        return err_str("");
     }
 
     let tag_names = taginode::list_tags(&db);
     for tag_name in tag_names {
         println!("{tag_name:?}")
     }
+    Ok(())
 }
 
-fn cat(args: &[&str], db: Connection) {
+fn cat(args: &[&str], db: Connection) -> Result<(), Error> {
     if args.len() < 1 {
-        usage();
+        return err_str("");
     }
     for path in args {
         let metadata = fs::metadata(path);
@@ -235,6 +216,7 @@ fn cat(args: &[&str], db: Connection) {
             Err(err) => eprintln!("{}", err),
         }
     }
+    Ok(())
 }
 
 fn get_file_btime(btime: std::io::Result<SystemTime>) -> Option<u64> {
@@ -258,4 +240,8 @@ fn get_file_btime(btime: std::io::Result<SystemTime>) -> Option<u64> {
     } else {
         None
     }
+}
+
+fn err_str(msg: &str) -> Result<(), Error> {
+    return Err(Error::new(ErrorKind::Other, msg));
 }

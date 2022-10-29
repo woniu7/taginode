@@ -1,4 +1,5 @@
 pub mod sql;
+pub mod opt;
 
 use std::collections::HashSet;
 use sqlite3::Connection;

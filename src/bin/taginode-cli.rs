@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::fs::DirEntry;
 use std::io::{Error, ErrorKind};
 use std::os::unix::prelude::MetadataExt;
 use std::time::SystemTime;
@@ -33,9 +34,9 @@ fn main() -> Result<(), Error>{
         (b'a', (                          OptArg::None, "-a             [search]ensable cross devices, default only search dev of path specified by -d"  )),
         (b'u', (                          OptArg::None, "-u             [search]output same inode(default remove duplicate item"                         )),
         // (b'v', (                          OptArg::None, "-v             verbose"                                                                    )),
-        // (b'V', (                          OptArg::None, "-V             version"                                                                    )),
         // (b'l', (                          OptArg::None, "-l             follow symbolic links instead of symbolic file itself"                      )),
         // (b'5', (                          OptArg::None, "-5             md5 mode instead of inode"                                                  )),
+        (b'V', (                          OptArg::None, "-V             version"                                                                         )),
     ]);
     let usage = usage(&opt_check);
 
@@ -46,6 +47,11 @@ fn main() -> Result<(), Error>{
             usage();
             std::process::exit(1);
         });
+
+    if options.get(&b'V').is_some() {
+        println!("{}", env!("CARGO_PKG_VERSION"));
+        return Ok(())
+    }
     if operands.is_empty() {
         usage();
     }
@@ -132,6 +138,7 @@ fn search(operands: &[&str], options: HashMap<u8, &str>, db: Connection) -> Resu
         };
     }
 
+    let stack = 
     let mut occur: Option<HashMap<u64, HashMap<u64, String>>> = match options.get(&b'u') {
         Some(_) => None,
         None => Some(HashMap::new()),

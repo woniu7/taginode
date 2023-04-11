@@ -238,3 +238,17 @@ pub fn get_tags(connection: &Connection, inode: INode) -> Vec<String> {
     }
     return tag_names;
 }
+
+pub fn list_files(connection: &Connection) -> Vec<String> {
+    let sql_str = "SELECT DISTINCT name FROM tags"; 
+    let mut cursor = connection
+        .prepare(&sql_str)
+        .unwrap()
+        .cursor();
+
+    let mut tag_names = Vec::new();
+    while let Some(row) = cursor.next().unwrap() {
+        tag_names.push(row[0].as_string().unwrap().to_owned());
+    }
+    return tag_names;
+}

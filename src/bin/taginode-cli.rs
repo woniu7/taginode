@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::fs::DirEntry;
 use std::io::{Error, ErrorKind};
 use std::os::unix::prelude::MetadataExt;
 use std::time::SystemTime;
@@ -17,7 +16,7 @@ fn usage(opt_check: &OptCheck) -> impl Fn() {
     move || {
         eprintln!("Usage: taginode-cli [option] tag <file> <tag> \"tag1[,tag2,tag3...]\"");
         eprintln!("Usage: taginode-cli [option] search [-d directory] \"tag1[,tag2,tag3...]\"");
-        eprintln!("Usage: taginode-cli [option] list tags");
+        eprintln!("Usage: taginode-cli [option] list tags|files");
         eprintln!("Usage: taginode-cli [option] cat <file> [file]...");
         eprintln!("{usage_opt}");
         std::process::exit(1);
@@ -213,13 +212,17 @@ fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str, cro
 }
 
 fn list(args: &[&str], db: Connection) -> Result<(), Error> {
-    if args.len() < 1 || args[0] != "tags" {
+    if args.len() < 1 || (args[0] != "tags" && args[0] != "files") {
         return err_str("");
     }
 
-    let tag_names = taginode::list_tags(&db);
-    for tag_name in tag_names {
-        println!("{tag_name:?}")
+    if args[0] == "tags" {
+        let tag_names = taginode::list_tags(&db);
+        for tag_name in tag_names {
+            println!("{tag_name:?}")
+        }
+    } else {
+
     }
     Ok(())
 }

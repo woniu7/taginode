@@ -28,7 +28,7 @@ pub struct File {
 //     tags: Vec<Tag>,
 // }
 
-pub fn get_inodes(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
+pub fn get_inodes_by_tags(connection: &Connection, tag_names: &[&str]) -> Vec<INode> {
     let mut h = HashSet::new();
     for tag_name in tag_names {
         h.insert(tag_name);
@@ -239,16 +239,31 @@ pub fn get_tags(connection: &Connection, inode: INode) -> Vec<String> {
     return tag_names;
 }
 
-pub fn list_files(connection: &Connection) -> Vec<String> {
-    let sql_str = "SELECT DISTINCT name FROM tags"; 
+pub fn get_inodes(connection: &Connection) -> Vec<INode> {
+    let mut inodes = Vec::new();
+    let sql_str = format!(
+        "
+        SELECT DISTINCT b.device, b.number, CAST(strftime('%s', b.btime) AS INT) as btime
+        FROM relation_tag_inode a 
+        LEFT JOIN inodes b ON a.inode_id = b.id 
+        LEFT JOIN tags c ON a.tag_id = c.id
+        " 
+    );
     let mut cursor = connection
         .prepare(&sql_str)
         .unwrap()
         .cursor();
 
-    let mut tag_names = Vec::new();
     while let Some(row) = cursor.next().unwrap() {
-        tag_names.push(row[0].as_string().unwrap().to_owned());
+        let btime = match row[2].as_integer() {
+            Some(v) => Some(v as u64),
+            None => None,
+        };
+        inodes.push(INode {
+            device: row[0].as_integer().unwrap() as u64,
+            number: row[1].as_integer().unwrap() as u64,
+            btime,
+        });
     }
-    return tag_names;
+    return inodes;
 }

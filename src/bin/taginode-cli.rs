@@ -15,8 +15,8 @@ fn usage(opt_check: &OptCheck) -> impl Fn() {
     let usage_opt = taginode::opt::usage(opt_check);
     move || {
         eprintln!("Usage: taginode-cli [option] tag <file> <tag> \"tag1[,tag2,tag3...]\"");
-        eprintln!("Usage: taginode-cli [option] search [-d directory] \"tag1[,tag2,tag3...]\"");
-        eprintln!("Usage: taginode-cli [option] list tags|files");
+        eprintln!("Usage: taginode-cli [option] search [-d directory] \"[tag1,tag2,tag3...]\"");
+        eprintln!("Usage: taginode-cli [option] list tags");
         eprintln!("Usage: taginode-cli [option] cat <file> [file]...");
         eprintln!("{usage_opt}");
         std::process::exit(1);
@@ -114,14 +114,17 @@ fn tag(operands: &[&str], db: Connection) -> Result<(), Error> {
 }
 
 fn search(operands: &[&str], options: HashMap<u8, &str>, db: Connection) -> Result<(), Error> {
-    if operands.len() != 1 {
-        return err_str("");
-    }
-    let tag_names: Vec<&str> = operands[0].split(",").collect();
     let paths = vec![options.get(&b'd').copied().unwrap_or("")];
-    eprintln!("tag_names: {:?}, paths: {:?}", tag_names, paths);
 
-    let inodes = taginode::get_inodes(&db, &tag_names);
+    let inodes = if operands.len() != 1 {
+        eprintln!("tag_names: [], paths: {:?}", paths);
+        taginode::get_inodes(&db)
+    } else {
+        let tag_names: Vec<&str> = operands[0].split(",").collect();
+        eprintln!("tag_names: {:?}, paths: {:?}", tag_names, paths);
+        taginode::get_inodes_by_tags(&db, &tag_names)
+    };
+
     let mut dev_inode_map: HashMap<u64, HashMap<u64, &INode>> = HashMap::new();
     for inode in &inodes {
         let inode_map = dev_inode_map.get_mut(&inode.device);
@@ -137,7 +140,6 @@ fn search(operands: &[&str], options: HashMap<u8, &str>, db: Connection) -> Resu
         };
     }
 
-    let stack = 
     let mut occur: Option<HashMap<u64, HashMap<u64, String>>> = match options.get(&b'u') {
         Some(_) => None,
         None => Some(HashMap::new()),
@@ -159,7 +161,7 @@ fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str, cro
             Some(s) => {
                 match s.get_mut(&metadata.ino()) {
                     Some(old) => {
-                        eprintln!("{}: same file as '{}'",f, old);
+                        eprintln!("{}: same file as '{}'", f, old);
                         return Ok(())
                     }, 
                     None => {
@@ -212,17 +214,13 @@ fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str, cro
 }
 
 fn list(args: &[&str], db: Connection) -> Result<(), Error> {
-    if args.len() < 1 || (args[0] != "tags" && args[0] != "files") {
+    if args.len() < 1 || args[0] != "tags" {
         return err_str("");
     }
 
-    if args[0] == "tags" {
-        let tag_names = taginode::list_tags(&db);
-        for tag_name in tag_names {
-            println!("{tag_name:?}")
-        }
-    } else {
-
+    let tag_names = taginode::list_tags(&db);
+    for tag_name in tag_names {
+        println!("{tag_name:?}")
     }
     Ok(())
 }

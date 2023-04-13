@@ -4,6 +4,7 @@ pub mod opt;
 use std::collections::HashSet;
 use sqlite3::Connection;
 use sqlite3::Value;
+use sqlite3::State;
 
 #[derive(Debug)]
 pub struct INode {
@@ -48,23 +49,32 @@ pub fn get_inodes_by_tags(connection: &Connection, tag_names: &[&str]) -> Vec<IN
         vec!["?"; tag_names.len()].join(","),
         tag_names.len(),
     );
-    let sql_args: Vec<Value> = tag_names.iter().map(|&val| {
-        Value::String(val.to_string())
-    }).collect();
-    let mut cursor = connection
-        .prepare(&sql_str)
-        .unwrap()
-        .cursor();
-    cursor.bind(&sql_args).unwrap();
+    // let sql_args: Vec<Value> = tag_names.iter().map(|&val| {
+    //     Value::String(val.to_string())
+    // }).collect();
+    // let mut cursor = connection
+    //     .prepare(&sql_str)
+    //     .unwrap()
+    //     .cursor();
+    // cursor.bind(&sql_args).unwrap();
 
-    while let Some(row) = cursor.next().unwrap() {
-        let btime = match row[2].as_integer() {
-            Some(v) => Some(v as u64),
-            None => None,
+    let mut statement = connection
+        .prepare(&sql_str)
+        .unwrap();
+    for (i, v) in tag_names.iter().enumerate() {
+        statement.bind(i, **v).unwrap();
+    }
+    statement.bind(1, 50).unwrap();
+    while let State::Row = statement.next().unwrap() {
+        let btime = statement.read::<Value>(2).unwrap();
+        let btime = match btime {
+            Value::Integer(v) => Some(v as u64),
+            Value::Null => None,
+            _ => None,
         };
         inodes.push(INode {
-            device: row[0].as_integer().unwrap() as u64,
-            number: row[1].as_integer().unwrap() as u64,
+            device: statement.read::<i64>(0).unwrap() as u64,
+            number: statement.read::<i64>(1).unwrap() as u64,
             btime,
         });
     }
@@ -249,19 +259,19 @@ pub fn get_inodes(connection: &Connection) -> Vec<INode> {
         LEFT JOIN tags c ON a.tag_id = c.id
         " 
     );
-    let mut cursor = connection
+    let mut statement = connection
         .prepare(&sql_str)
-        .unwrap()
-        .cursor();
-
-    while let Some(row) = cursor.next().unwrap() {
-        let btime = match row[2].as_integer() {
-            Some(v) => Some(v as u64),
-            None => None,
+        .unwrap();
+    while let State::Row = statement.next().unwrap() {
+        let btime = statement.read::<Value>(2).unwrap();
+        let btime = match btime {
+            Value::Integer(v) => Some(v as u64),
+            Value::Null => None,
+            _ => None,
         };
         inodes.push(INode {
-            device: row[0].as_integer().unwrap() as u64,
-            number: row[1].as_integer().unwrap() as u64,
+            device: statement.read::<i64>(0).unwrap() as u64,
+            number: statement.read::<i64>(1).unwrap() as u64,
             btime,
         });
     }

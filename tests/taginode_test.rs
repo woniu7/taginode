@@ -2,7 +2,7 @@ use taginode::INode;
 
 #[test]
 fn t() {
-    let connection = taginode::sql::init("fk.db");
+    let connection = taginode::sql::init(":memory:");
     {
         let inodes = vec![
             INode{ device: 16777220, number: 12951634006, btime: None },
@@ -31,7 +31,7 @@ fn t() {
         }
     }
     {
-        let inodes = taginode::get_inodes_by_tags(&connection, &vec![ "basketball"]);
+        let inodes = taginode::get_inodes(&connection);
             println!("{:?}", inodes);
         let expect = vec![
             INode { device:16777220, number: 12951634006, btime: None },

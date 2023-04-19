@@ -62,9 +62,8 @@ pub fn get_inodes_by_tags(connection: &Connection, tag_names: &[&str]) -> Vec<IN
         .prepare(&sql_str)
         .unwrap();
     for (i, v) in tag_names.iter().enumerate() {
-        statement.bind(i, **v).unwrap();
+        statement.bind(i+1, **v).unwrap();
     }
-    statement.bind(1, 50).unwrap();
     while let State::Row = statement.next().unwrap() {
         let btime = statement.read::<Value>(2).unwrap();
         let btime = match btime {

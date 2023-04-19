@@ -14,7 +14,7 @@ use taginode::opt::OptCheck;
 fn usage(opt_check: &OptCheck) -> impl Fn() {
     let usage_opt = taginode::opt::usage(opt_check);
     move || {
-        eprintln!("Usage: taginode-cli [option] tag <file> <tag> \"tag1[,tag2,tag3...]\"");
+        eprintln!("Usage: taginode-cli [option] tag <file> \"tag1[,tag2,tag3...]\"");
         eprintln!("Usage: taginode-cli [option] search [-d directory] \"[tag1,tag2,tag3...]\"");
         eprintln!("Usage: taginode-cli [option] list tags");
         eprintln!("Usage: taginode-cli [option] cat <file> [file]...");
@@ -32,7 +32,8 @@ fn main() -> Result<(), Error>{
         (b'd', (                OptArg::Mandatory("."), "-d <directory> [search]specify path to search file by tags, default \".\""                      )),
         (b'a', (                          OptArg::None, "-a             [search]ensable cross devices, default only search dev of path specified by -d"  )),
         (b'u', (                          OptArg::None, "-u             [search]output same inode(default remove duplicate item"                         )),
-        // (b'v', (                          OptArg::None, "-v             verbose"                                                                    )),
+        (b'v', (                          OptArg::None, "-v             verbose"                                                                         )),
+        (b'q', (                          OptArg::None, "-q             quiet"                                                                           )),
         // (b'l', (                          OptArg::None, "-l             follow symbolic links instead of symbolic file itself"                      )),
         // (b'5', (                          OptArg::None, "-5             md5 mode instead of inode"                                                  )),
         (b'V', (                          OptArg::None, "-V             version"                                                                         )),
@@ -145,7 +146,7 @@ fn search(operands: &[&str], options: HashMap<u8, &str>, db: Connection) -> Resu
         None => Some(HashMap::new()),
     };
     for path in paths {
-        match process_file(&dev_inode_map, path, options.get(&b'a').is_some(), &mut occur) {
+        match process_file(&dev_inode_map, path, options.get(&b'a').is_some(), options.get(&b'v').is_some(), &mut occur) {
             Err(error) => eprintln!("{path}: {error:?}"),
             _ => (),
         }
@@ -153,29 +154,8 @@ fn search(operands: &[&str], options: HashMap<u8, &str>, db: Connection) -> Resu
     Ok(())
 }
 
-fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str, cross_dev: bool, occur: &mut Option<HashMap<u64, HashMap<u64, String>>>) -> Result<(), Error> {
+fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str, cross_dev: bool, verbose: bool, occur: &mut Option<HashMap<u64, HashMap<u64, String>>>) -> Result<(), Error> {
     let metadata = fs::symlink_metadata(f)?;
-    if occur.is_some() {
-        let occur = occur.as_mut().unwrap();
-        match occur.get_mut(&metadata.dev()) {
-            Some(s) => {
-                match s.get_mut(&metadata.ino()) {
-                    Some(old) => {
-                        eprintln!("{}: same file as '{}'", f, old);
-                        return Ok(())
-                    }, 
-                    None => {
-                        s.insert(metadata.ino(), f.to_string());
-                    },
-                }
-            },
-            None => {
-                let mut inode_map = HashMap::new();
-                inode_map.insert(metadata.ino(), f.to_string());
-                occur.insert(metadata.dev(), inode_map);
-            },
-        }
-    }
     match dev_inode_map.get(&metadata.dev()) {
         Some(inode_map) => {
         match inode_map.get(&metadata.ino()) {
@@ -183,7 +163,30 @@ fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str, cro
             Some(ino) => {
                 let created = get_file_btime(metadata.created());
                 if ino.btime == None || created.is_none() || ino.btime.unwrap() == created.unwrap() {
-                    println!("{} ", f);
+                    if occur.is_some() {
+                        let occur = occur.as_mut().unwrap();
+                        match occur.get_mut(&metadata.dev()) {
+                            Some(s) => {
+                                match s.get_mut(&metadata.ino()) {
+                                    Some(old) => {
+                                        if verbose {
+                                            eprintln!("{}: same file as '{}'", f, old);
+                                        }   
+                                        return Ok(())
+                                    }, 
+                                    None => {
+                                        s.insert(metadata.ino(), f.to_string());
+                                    },
+                                }
+                            },
+                            None => {
+                                let mut inode_map = HashMap::new();
+                                inode_map.insert(metadata.ino(), f.to_string());
+                                occur.insert(metadata.dev(), inode_map);
+                            },
+                        }
+                    } 
+                    println!("{}", f);
                 }
             }
         };
@@ -201,7 +204,7 @@ fn process_file(dev_inode_map: &HashMap<u64, HashMap<u64, &INode>>, f: &str, cro
                 Ok(entry) => {
                     let p = entry.path();
                     let p= p.to_str().unwrap();
-                    match process_file(&dev_inode_map, p, cross_dev, occur) {
+                    match process_file(&dev_inode_map, p, cross_dev, verbose, occur) {
                         Err(error) => eprintln!("{p}: {error:?}"),
                         _ => (),
                     }
